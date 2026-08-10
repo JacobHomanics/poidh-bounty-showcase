@@ -15,7 +15,7 @@ import {
 import { useSubmitClaim } from '../hooks/useSubmitClaim';
 import { colors, radii, spacing } from '../theme';
 import { shortAddress } from '../utils/format';
-import { prepareClaimUri } from '../utils/uploadProof';
+import { prepareClaimUri, uriToImageFile } from '../utils/uploadProof';
 
 type Step = 'photo' | 'details' | 'review';
 
@@ -49,6 +49,7 @@ export function ClaimFlow({
   const [step, setStep] = useState<Step>('photo');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  /** In-memory object URL — bytes are copied at pick time so iOS can't revoke them. */
   const [localImageUri, setLocalImageUri] = useState<string | null>(null);
   const [manualUri, setManualUri] = useState('');
   const [showManualUri, setShowManualUri] = useState(false);
@@ -62,12 +63,23 @@ export function ClaimFlow({
     setStep('photo');
     setName('');
     setDescription('');
-    setLocalImageUri(null);
+    setLocalImageUri((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
+      return null;
+    });
     setManualUri('');
     setShowManualUri(false);
     setUploading(false);
     setError(null);
   }, [onChainBountyId]);
+
+  useEffect(() => {
+    return () => {
+      if (localImageUri?.startsWith('blob:')) {
+        URL.revokeObjectURL(localImageUri);
+      }
+    };
+  }, [localImageUri]);
 
   const isIssuer =
     Boolean(walletAddress) &&
@@ -88,8 +100,19 @@ export function ClaimFlow({
       allowsMultipleSelection: false,
     });
     if (result.canceled || !result.assets[0]?.uri) return;
-    setLocalImageUri(result.assets[0].uri);
-    setManualUri('');
+
+    try {
+      // Copy bytes immediately — iOS Safari gallery File refs can go empty later.
+      const file = await uriToImageFile(result.assets[0].uri, 'claim.jpg');
+      const objectUrl = URL.createObjectURL(file);
+      setLocalImageUri((prev) => {
+        if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
+        return objectUrl;
+      });
+      setManualUri('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not read the selected photo');
+    }
   };
 
   const goBack = () => {
