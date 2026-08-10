@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLogin, usePrivy } from '@privy-io/react-auth';
+import { useExportWallet, useLogin, usePrivy } from '@privy-io/react-auth';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -47,15 +47,48 @@ function primaryEvmAddress(
   return null;
 }
 
+function embeddedEthereumAddress(
+  user: ReturnType<typeof usePrivy>['user'],
+): string | null {
+  const account = user?.linkedAccounts?.find(
+    (item) =>
+      item.type === 'wallet' &&
+      'walletClientType' in item &&
+      item.walletClientType === 'privy' &&
+      'chainType' in item &&
+      item.chainType === 'ethereum' &&
+      'address' in item &&
+      typeof item.address === 'string',
+  );
+  return account && 'address' in account ? account.address : null;
+}
+
 function PrivyAuthButton() {
   const { ready, authenticated, user, logout } = usePrivy();
   const { login } = useLogin();
+  const { exportWallet } = useExportWallet();
   const [open, setOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const evmAddress = useMemo(() => primaryEvmAddress(user), [user]);
+  const embeddedAddress = useMemo(() => embeddedEthereumAddress(user), [user]);
   const balancesEnabled = open && Boolean(evmAddress);
   const balances = useMultiChainBalances(evmAddress, balancesEnabled);
   const usdPrices = useNativeUsdPrices(balancesEnabled);
+
+  const handleExportKey = async () => {
+    if (!embeddedAddress || exporting) return;
+    setExporting(true);
+    try {
+      // Close our menu so Privy's secure export modal isn't covered.
+      setOpen(false);
+      await exportWallet({ address: embeddedAddress });
+    } catch {
+      // User closed the modal or export failed — nothing to surface here.
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (!ready) {
     return (
@@ -162,6 +195,23 @@ function PrivyAuthButton() {
                   </View>
                 ) : null}
                 <View style={styles.menuRule} />
+                {embeddedAddress ? (
+                  <Pressable
+                    onPress={() => {
+                      void handleExportKey();
+                    }}
+                    disabled={exporting}
+                    style={[styles.menuRow, exporting && styles.menuRowDisabled]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Export private key"
+                  >
+                    {exporting ? (
+                      <ActivityIndicator color={colors.ink} size="small" />
+                    ) : (
+                      <Text style={styles.menuRowLabel}>Export private key</Text>
+                    )}
+                  </Pressable>
+                ) : null}
                 <Pressable
                   onPress={() => {
                     setOpen(false);
@@ -330,6 +380,18 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.line,
     marginVertical: spacing.md,
+  },
+  menuRow: {
+    paddingVertical: spacing.sm,
+    marginBottom: 4,
+  },
+  menuRowDisabled: {
+    opacity: 0.55,
+  },
+  menuRowLabel: {
+    color: colors.ink,
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 14,
   },
   logoutRow: {
     paddingVertical: spacing.sm,

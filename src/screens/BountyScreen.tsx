@@ -1,3 +1,4 @@
+import { usePrivy } from '@privy-io/react-auth';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -34,6 +35,7 @@ type Props = {
 type TabKey = 'about' | 'claims';
 
 export function BountyScreen({ bounty, onBack }: Props) {
+  const { authenticated } = usePrivy();
   const [detail, setDetail] = useState<BountyDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -244,11 +246,15 @@ export function BountyScreen({ bounty, onBack }: Props) {
         onPress={openOnPoidh}
         label="open on poidh.xyz"
         hint=""
-        secondary={{
-          label: 'Claim',
-          onPress: () => setClaimOpen(true),
-          disabled: loading,
-        }}
+        secondary={
+          authenticated
+            ? {
+                label: 'Claim',
+                onPress: () => setClaimOpen(true),
+                disabled: loading,
+              }
+            : undefined
+        }
       />
         </>
       )}
