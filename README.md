@@ -47,10 +47,14 @@ Expo + React Native (web/iOS/Android) · Syne + DM Sans · expo-image · POIDH p
 
 ## Auth (Privy)
 
-1. Copy `.env.example` to `.env` and set `EXPO_PUBLIC_PRIVY_APP_ID` from the [Privy Dashboard](https://dashboard.privy.io).
+This web deploy uses **`@privy-io/react-auth`** (Privy’s React/web SDK). Do **not** switch to `@privy-io/expo` for Vercel — that SDK is iOS/Android only (“Web is not supported”).
+
+1. Copy `.env.example` to `.env` / `.env.local` and set `EXPO_PUBLIC_PRIVY_APP_ID` from the [Privy Dashboard](https://dashboard.privy.io).
 2. Enable **Email** and **SMS** login methods in the dashboard.
 3. Add your deploy origin (and `http://localhost:8081`) under allowed domains / app clients.
 4. Restart Expo after changing env vars (`npm run web`).
+
+Metro resolves Privy’s optional Solana peer packages at build time, so `@solana/kit` and `@solana-program/*` are installed even though this app is Ethereum-only. `metro.config.js` follows Privy’s package-exports guidance for `jose` / `zustand` / `isows`.
 
 ## Routing
 
