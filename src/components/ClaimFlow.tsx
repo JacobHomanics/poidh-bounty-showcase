@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { useSubmitClaim } from '../hooks/useSubmitClaim';
 import { colors, radii, spacing } from '../theme';
-import { shortAddress } from '../utils/format';
 import { prepareClaimUri, uriToImageFile } from '../utils/uploadProof';
 
 type Step = 'photo' | 'details' | 'review';
@@ -44,15 +43,13 @@ export function ClaimFlow({
   onComplete,
 }: Props) {
   const { login } = useLogin();
-  const { ready, authenticated, walletAddress, submitting, submitClaim } =
+  const { authenticated, walletAddress, submitting, submitClaim } =
     useSubmitClaim();
   const [step, setStep] = useState<Step>('photo');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   /** In-memory object URL — bytes are copied at pick time so iOS can't revoke them. */
   const [localImageUri, setLocalImageUri] = useState<string | null>(null);
-  const [manualUri, setManualUri] = useState('');
-  const [showManualUri, setShowManualUri] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,8 +64,6 @@ export function ClaimFlow({
       if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
       return null;
     });
-    setManualUri('');
-    setShowManualUri(false);
     setUploading(false);
     setError(null);
   }, [onChainBountyId]);
@@ -109,7 +104,6 @@ export function ClaimFlow({
         if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
         return objectUrl;
       });
-      setManualUri('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read the selected photo');
     }
@@ -127,8 +121,8 @@ export function ClaimFlow({
   const goNext = () => {
     setError(null);
     if (step === 'photo') {
-      if (!localImageUri && !manualUri.trim()) {
-        setError('Pick a proof photo (or paste a proof URL)');
+      if (!localImageUri) {
+        setError('Pick a proof photo');
         return;
       }
       setStep('details');
@@ -164,7 +158,6 @@ export function ClaimFlow({
         name,
         description,
         localImageUri,
-        existingImageUri: manualUri.trim() || null,
       });
       setUploading(false);
 
@@ -223,16 +216,6 @@ export function ClaimFlow({
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        {!ready ? (
-          <ActivityIndicator color={colors.coral} />
-        ) : !authenticated ? (
-          <Text style={styles.hint}>Log in to continue with your Privy wallet.</Text>
-        ) : walletAddress ? (
-          <Text style={styles.hint}>Wallet {shortAddress(walletAddress)}</Text>
-        ) : (
-          <Text style={styles.hint}>An embedded wallet will be created on submit.</Text>
-        )}
-
         {disabledReason ? <Text style={styles.warn}>{disabledReason}</Text> : null}
         {isIssuer ? (
           <Text style={styles.warn}>
@@ -243,8 +226,7 @@ export function ClaimFlow({
         {step === 'photo' ? (
           <>
             <Text style={styles.help}>
-              Choose the photo that proves you completed this bounty. It will be
-              pinned to IPFS with NFT metadata (same pattern as poidh.xyz).
+              Choose the photo that proves you completed this bounty.
             </Text>
             <Pressable
               onPress={() => void pickImage()}
@@ -269,36 +251,13 @@ export function ClaimFlow({
                 <Text style={styles.link}>Replace photo</Text>
               </Pressable>
             ) : null}
-            <Pressable
-              onPress={() => setShowManualUri((value) => !value)}
-              disabled={busy}
-            >
-              <Text style={styles.link}>
-                {showManualUri ? 'Hide proof URL' : 'Or paste a proof URL instead'}
-              </Text>
-            </Pressable>
-            {showManualUri ? (
-              <TextInput
-                value={manualUri}
-                onChangeText={(value) => {
-                  setManualUri(value);
-                  if (value.trim()) setLocalImageUri(null);
-                }}
-                placeholder="https://… or ipfs://…"
-                placeholderTextColor={colors.inkDim}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.input}
-                editable={!busy}
-              />
-            ) : null}
           </>
         ) : null}
 
         {step === 'details' ? (
           <>
             <Text style={styles.help}>
-              Add a short title and description for your claim NFT.
+              Add a short title and description.
             </Text>
             {localImageUri ? (
               <Image
@@ -335,7 +294,7 @@ export function ClaimFlow({
         {step === 'review' ? (
           <>
             <Text style={styles.help}>
-              Confirm everything looks right, then mint your claim on-chain.
+              Confirm everything looks right, then submit!
             </Text>
             {localImageUri ? (
               <Image
@@ -343,9 +302,7 @@ export function ClaimFlow({
                 style={styles.preview}
                 contentFit="cover"
               />
-            ) : (
-              <Text style={styles.hint}>{manualUri}</Text>
-            )}
+            ) : null}
             <Text style={styles.reviewTitle}>{name.trim()}</Text>
             <Text style={styles.reviewBody}>{description.trim()}</Text>
           </>
@@ -467,11 +424,6 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_400Regular',
     fontSize: 14,
     lineHeight: 20,
-  },
-  hint: {
-    color: colors.inkDim,
-    fontFamily: 'DMSans_400Regular',
-    fontSize: 12,
   },
   warn: {
     color: colors.voting,
