@@ -22,9 +22,10 @@ export function formatUsd(value: number): string {
 export function formatNativeAmount(amountWei: string, currency = 'eth'): string {
   try {
     const wei = BigInt(amountWei);
+    const unit = currency.toLowerCase() === 'degen' ? 'DEGEN' : 'ETH';
+    if (wei === 0n) return `0 ${unit}`;
     const whole = Number(wei) / 1e18;
     if (!Number.isFinite(whole)) return amountWei;
-    const unit = currency.toLowerCase() === 'degen' ? 'DEGEN' : 'ETH';
     if (whole >= 1) return `${whole.toFixed(3)} ${unit}`;
     if (whole >= 0.01) return `${whole.toFixed(4)} ${unit}`;
     return `${whole.toFixed(6)} ${unit}`;
