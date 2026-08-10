@@ -14,6 +14,7 @@ import { AppFooter } from '../components/AppFooter';
 import { AppHeader } from '../components/AppHeader';
 import { ClaimCarousel } from '../components/ClaimCarousel';
 import { ClaimFlow } from '../components/ClaimFlow';
+import { MarkdownBody } from '../components/MarkdownBody';
 import type { BountyDetail, EnrichedBounty } from '../types';
 import { colors, radii, spacing } from '../theme';
 import {
@@ -190,12 +191,15 @@ export function BountyScreen({ bounty, onBack }: Props) {
               </View>
             </View>
             <View>
-              <Text
-                style={styles.description}
-                numberOfLines={descriptionExpanded ? undefined : 8}
+              <View
+                style={
+                  descriptionExpanded
+                    ? undefined
+                    : styles.descriptionCollapsed
+                }
               >
-                {description}
-              </Text>
+                <MarkdownBody>{description}</MarkdownBody>
+              </View>
               {showDescriptionToggle && (
                 <Pressable
                   onPress={() => setDescriptionExpanded((open) => !open)}
@@ -408,11 +412,9 @@ const styles = StyleSheet.create({
     color: '#1A1010',
     fontFamily: 'Syne_700Bold',
   },
-  description: {
-    color: colors.ink,
-    fontFamily: 'DMSans_400Regular',
-    fontSize: 15,
-    lineHeight: 22,
+  descriptionCollapsed: {
+    maxHeight: 176,
+    overflow: 'hidden',
   },
   showMoreButton: {
     marginTop: 6,
