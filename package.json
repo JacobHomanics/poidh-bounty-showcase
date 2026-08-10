@@ -1,0 +1,41 @@
+{
+  "name": "poidh-bounties",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@expo-google-fonts/dm-sans": "^0.4.2",
+    "@expo-google-fonts/syne": "^0.4.2",
+    "@expo/metro-runtime": "~57.0.9",
+    "@expo/vector-icons": "^15.0.2",
+    "@privy-io/react-auth": "^3.37.0",
+    "babel-preset-expo": "~57.0.0",
+    "expo": "~57.0.12",
+    "expo-clipboard": "~57.0.1",
+    "expo-font": "~57.0.1",
+    "expo-image": "~57.0.2",
+    "expo-image-picker": "~57.0.9",
+    "expo-linear-gradient": "~57.0.1",
+    "expo-linking": "~57.0.5",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
+    "react-native-reanimated-carousel": "^4.0.3",
+    "react-native-web": "^0.21.2",
+    "react-native-worklets": "0.10.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "export:web": "expo export --platform web"
+  },
+  "private": true
+}

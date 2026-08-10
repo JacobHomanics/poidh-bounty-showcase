@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "poidh roll",
+    "slug": "poidh-roll",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "poidhroll",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "xyz.poidh.roll"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A1018",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "xyz.poidh.roll",
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "name": "poidh roll",
+      "shortName": "poidh roll",
+      "description": "Proof-first discovery for live POIDH bounties — browse claim photos, find open lanes, open on poidh.xyz."
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow poidh roll to access your photos so you can attach claim proof."
+        }
+      ]
+    ]
+  }
+}
