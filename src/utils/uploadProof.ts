@@ -1,20 +1,19 @@
 /**
- * Claim proof upload aligned with poidh.xyz FormClaim:
- * 1) upload image via poidh's Pinata backend (so their gateway can serve it)
- * 2) upload ERC-721 metadata that references the gateway image URL
- * 3) return the gateway metadata URL for createClaim(..., uri)
+ * Claim proof upload aligned with poidh.xyz metadata shape:
+ * 1) pin image to IPFS (Pinata)
+ * 2) pin ERC-721 metadata JSON that references an HTTPS gateway image URL
+ * 3) return an HTTPS gateway metadata URL for createClaim(..., uri)
  *
- * poidh's indexer resolves imageUrl by fetching the on-chain URI. Their
- * dedicated gateway only serves content pinned to their Pinata account, so
- * pinning with a personal JWT + storing ipfs:// CIDs leaves imageUrl null.
+ * Important: poidh's indexer fetches the on-chain URI over HTTP. Storing
+ * `ipfs://…` leaves imageUrl null. Their dedicated upload API also only
+ * allows Origin https://poidh.xyz (CORS), so we pin with Pinata directly and
+ * write public HTTPS gateway links instead.
  */
 
-const POIDH_UPLOAD_API =
-  'https://us-central1-plated-hangout-393021.cloudfunctions.net/poidh';
+const PINATA_JWT = (process.env.EXPO_PUBLIC_PINATA_JWT ?? '').trim();
 
-/** Same dedicated gateway URL poidh.xyz writes on-chain and into metadata. */
-const POIDH_IPFS_GATEWAY =
-  'https://beige-impossible-dragon-883.mypinata.cloud/ipfs';
+/** Public gateway — works for pins from any Pinata account. */
+const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs';
 
 export type ClaimMetadata = {
   name: string;
@@ -24,20 +23,20 @@ export type ClaimMetadata = {
   attributes: never[];
 };
 
-function toPoidhGatewayUri(cid: string): string {
+function toGatewayUri(cid: string): string {
   const cleaned = cid
     .trim()
     .replace(/^ipfs:\/\//, '')
     .replace(/^https?:\/\/[^/]+\/ipfs\//, '');
-  return `${POIDH_IPFS_GATEWAY}/${cleaned}`;
+  return `${IPFS_GATEWAY}/${cleaned}`;
 }
 
-/** Normalize pasted proof URLs so metadata/on-chain URIs stay HTTP gateway links. */
+/** Normalize pasted proof URLs into HTTP gateway links when needed. */
 export function normalizeProofUri(uri: string): string {
   const value = uri.trim();
   if (!value) return value;
   if (value.startsWith('ipfs://')) {
-    return toPoidhGatewayUri(value);
+    return toGatewayUri(value);
   }
   return value;
 }
@@ -73,7 +72,12 @@ async function compressImage(file: Blob, maxDimension = 1280, quality = 0.8): Pr
  * blob URLs between pick and submit, which otherwise uploads as empty.
  */
 export async function uriToImageFile(uri: string, filename = 'claim.jpg'): Promise<File> {
-  const response = await fetch(uri);
+  let response: Response;
+  try {
+    response = await fetch(uri);
+  } catch {
+    throw new Error('Could not read the selected image — try picking it again');
+  }
   if (!response.ok) {
     throw new Error('Could not read the selected image');
   }
@@ -101,36 +105,64 @@ export async function uriToBlob(uri: string): Promise<Blob> {
   return uriToImageFile(uri);
 }
 
-async function uploadFileToPoidh(file: File): Promise<string> {
-  const body = new FormData();
-  body.append('image', file);
-
-  const response = await fetch(`${POIDH_UPLOAD_API}/uploadFile`, {
-    method: 'POST',
-    body,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Image upload failed (${response.status}): ${text.slice(0, 160)}`);
+function requirePinataJwt() {
+  if (!PINATA_JWT) {
+    throw new Error(
+      'Set EXPO_PUBLIC_PINATA_JWT in .env to upload claim proofs',
+    );
   }
-  const json = (await response.json()) as { IpfsHash?: string };
-  if (!json.IpfsHash) throw new Error('Upload did not return an IPFS hash for the image');
-  return toPoidhGatewayUri(json.IpfsHash);
 }
 
-async function uploadMetadataToPoidh(metadata: ClaimMetadata): Promise<string> {
-  const response = await fetch(`${POIDH_UPLOAD_API}/uploadMetadata`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ metadata }),
-  });
+async function pinFileToIpfs(file: File): Promise<string> {
+  requirePinataJwt();
+  const body = new FormData();
+  body.append('file', file);
+  body.append('pinataMetadata', JSON.stringify({ name: file.name || 'claim.jpg' }));
+
+  let response: Response;
+  try {
+    response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${PINATA_JWT}` },
+      body,
+    });
+  } catch {
+    throw new Error('Image upload failed — check your network and try again');
+  }
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Metadata upload failed (${response.status}): ${text.slice(0, 160)}`);
+    throw new Error(`Pinata image upload failed (${response.status}): ${text.slice(0, 160)}`);
   }
   const json = (await response.json()) as { IpfsHash?: string };
-  if (!json.IpfsHash) throw new Error('Upload did not return an IPFS hash for metadata');
-  return toPoidhGatewayUri(json.IpfsHash);
+  if (!json.IpfsHash) throw new Error('Pinata did not return an IPFS hash for the image');
+  return toGatewayUri(json.IpfsHash);
+}
+
+async function pinJsonToIpfs(metadata: ClaimMetadata, name: string): Promise<string> {
+  requirePinataJwt();
+  let response: Response;
+  try {
+    response = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${PINATA_JWT}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        pinataContent: metadata,
+        pinataMetadata: { name },
+      }),
+    });
+  } catch {
+    throw new Error('Metadata upload failed — check your network and try again');
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Pinata metadata upload failed (${response.status}): ${text.slice(0, 160)}`);
+  }
+  const json = (await response.json()) as { IpfsHash?: string };
+  if (!json.IpfsHash) throw new Error('Pinata did not return an IPFS hash for metadata');
+  return toGatewayUri(json.IpfsHash);
 }
 
 export function buildClaimMetadata(
@@ -148,8 +180,8 @@ export function buildClaimMetadata(
 }
 
 /**
- * Upload image + metadata like poidh.xyz, returning the metadata URI for createClaim.
- * If `existingImageUri` is already a public URL (manual paste), skip image upload.
+ * Upload image + metadata, returning the metadata URI for createClaim.
+ * If `existingImageUri` is already a public URL, skip image upload.
  */
 export async function prepareClaimUri(options: {
   name: string;
@@ -166,12 +198,12 @@ export async function prepareClaimUri(options: {
   let imageUri = normalizeProofUri(options.existingImageUri ?? '');
   if (!imageUri) {
     if (!options.localImageUri) {
-      throw new Error('Pick a proof photo or paste an image URL');
+      throw new Error('Pick a proof photo');
     }
     const file = await uriToImageFile(options.localImageUri, 'claim.jpg');
-    imageUri = await uploadFileToPoidh(file);
+    imageUri = await pinFileToIpfs(file);
   }
 
   const metadata = buildClaimMetadata(imageUri, name, description);
-  return uploadMetadataToPoidh(metadata);
+  return pinJsonToIpfs(metadata, `poidh-claim-${name.slice(0, 48)}`);
 }

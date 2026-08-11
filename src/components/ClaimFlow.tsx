@@ -333,7 +333,7 @@ export function ClaimFlow({
                 {!authenticated
                   ? 'Log in to claim'
                   : uploading
-                    ? 'Uploading to IPFS…'
+                    ? 'Uploading…'
                     : submitting
                       ? 'Submitting…'
                       : 'Submit claim'}
