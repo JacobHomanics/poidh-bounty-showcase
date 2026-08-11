@@ -1,4 +1,4 @@
-import { createPublicClient, http, type Address } from 'viem';
+import { createPublicClient, http, type Address, type PublicClient } from 'viem';
 import { arbitrum, base, degen, mainnet } from 'viem/chains';
 import type { KnownChainId } from '../theme';
 
@@ -41,7 +41,15 @@ const clients = {
     chain: VIEM_CHAINS[666666666],
     transport: http(rpcUrlFor(666666666)),
   }),
-};
+} as const satisfies Record<KnownChainId, PublicClient>;
+
+export function isKnownChainId(chainId: number): chainId is KnownChainId {
+  return chainId in clients;
+}
+
+export function getPublicClient(chainId: KnownChainId): PublicClient {
+  return clients[chainId];
+}
 
 export function getNativeBalance(
   chainId: KnownChainId,

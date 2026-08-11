@@ -1,6 +1,13 @@
-import { useCreateWallet, usePrivy, useSendTransaction, useWallets } from '@privy-io/react-auth';
+import {
+  getEmbeddedConnectedWallet,
+  useCreateWallet,
+  usePrivy,
+  useSendTransaction,
+  useWallets,
+} from '@privy-io/react-auth';
 import { useCallback, useState } from 'react';
-import { encodeFunctionData } from 'viem';
+import { encodeFunctionData, type Address, type Hex } from 'viem';
+import { getPublicClient, isKnownChainId } from '../chains/clients';
 import { createClaimAbi, poidhContractAddress } from '../contracts/poidh';
 
 export type ClaimInput = {
@@ -11,6 +18,51 @@ export type ClaimInput = {
   proofUri: string;
 };
 
+const GAS_BUFFER_BPS = 130n; // 1.3× estimated gas
+/** Cap L2 maxFeePerGas so Privy doesn't over-reserve for balance checks. */
+const L2_MAX_FEE_PER_GAS_WEI = 2_000_000_000n; // 2 gwei
+const L2_CHAIN_IDS = new Set([8453, 42161, 666666666]);
+
+async function prepareClaimTx(params: {
+  chainId: number;
+  from: Address;
+  to: Address;
+  data: Hex;
+}) {
+  if (!isKnownChainId(params.chainId)) {
+    throw new Error(`Unsupported chain ${params.chainId}`);
+  }
+
+  const client = getPublicClient(params.chainId);
+  const estimated = await client.estimateGas({
+    account: params.from,
+    to: params.to,
+    data: params.data,
+  });
+  const gas = (estimated * GAS_BUFFER_BPS) / 100n;
+
+  const fees = await client.estimateFeesPerGas();
+  let maxFeePerGas = fees.maxFeePerGas ?? fees.gasPrice ?? 1_000_000_000n;
+  let maxPriorityFeePerGas =
+    fees.maxPriorityFeePerGas ?? fees.gasPrice ?? 100_000_000n;
+
+  if (L2_CHAIN_IDS.has(params.chainId) && maxFeePerGas > L2_MAX_FEE_PER_GAS_WEI) {
+    maxFeePerGas = L2_MAX_FEE_PER_GAS_WEI;
+    if (maxPriorityFeePerGas > maxFeePerGas) {
+      maxPriorityFeePerGas = maxFeePerGas;
+    }
+  }
+
+  return {
+    to: params.to,
+    data: params.data,
+    chainId: params.chainId,
+    gas,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+  };
+}
+
 export function useSubmitClaim() {
   const { ready, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
@@ -18,9 +70,9 @@ export function useSubmitClaim() {
   const { sendTransaction } = useSendTransaction();
   const [submitting, setSubmitting] = useState(false);
 
-  const embeddedWallet = wallets.find(
-    (wallet) => wallet.walletClientType === 'privy',
-  );
+  const embeddedWallet = getEmbeddedConnectedWallet(wallets) ??
+    wallets.find((wallet) => wallet.walletClientType === 'privy') ??
+    null;
   const walletAddress =
     embeddedWallet?.address ??
     wallets[0]?.address ??
@@ -52,13 +104,13 @@ export function useSubmitClaim() {
 
       setSubmitting(true);
       try {
-        let address = walletAddress;
+        let address = walletAddress as Address | null;
         if (!address) {
           const created = await ensureWallet();
           address =
             typeof created === 'object' && created && 'address' in created
-              ? String((created as { address: string }).address)
-              : wallets[0]?.address;
+              ? (String((created as { address: string }).address) as Address)
+              : ((wallets[0]?.address as Address | undefined) ?? null);
         }
         if (!address) {
           throw new Error('Could not create or find an embedded wallet');
@@ -66,6 +118,7 @@ export function useSubmitClaim() {
 
         const wallet =
           wallets.find((item) => item.address.toLowerCase() === address!.toLowerCase()) ??
+          getEmbeddedConnectedWallet(wallets) ??
           wallets.find((item) => item.walletClientType === 'privy') ??
           wallets[0];
 
@@ -79,19 +132,18 @@ export function useSubmitClaim() {
           args: [BigInt(input.onChainBountyId), name, description, uri],
         });
 
-        const result = await sendTransaction(
-          {
-            to: contract,
-            data,
-            chainId: input.chainId,
-          },
-          {
-            address,
-            uiOptions: {
-              description: 'Submit your claim on the poidh bounty contract',
-            },
-          },
-        );
+        // Build fees/gas locally, then broadcast headlessly (no Privy confirm modal).
+        const request = await prepareClaimTx({
+          chainId: input.chainId,
+          from: address,
+          to: contract,
+          data,
+        });
+
+        const result = await sendTransaction(request, {
+          address,
+          uiOptions: { showWalletUIs: false },
+        });
 
         return result.hash;
       } finally {

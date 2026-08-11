@@ -37,6 +37,8 @@ export function PrivyAppProvider({ children }: Props) {
           showWalletLoginFirst: false,
         },
         embeddedWallets: {
+          // Skip Privy confirmation modals — claim submit is already the confirm step.
+          showWalletUIs: false,
           ethereum: {
             createOnLogin: 'all-users',
           },
